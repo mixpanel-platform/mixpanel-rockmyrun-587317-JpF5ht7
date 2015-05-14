@@ -7,9 +7,132 @@
     <script src="https://cdn.mxpnl.com/libs/mixpanel-platform/build/mixpanel-platform.v0.latest.min.js"></script>
   </head>
   <body class="mixpanel-platform-body">
-    <h1>Hello, World!</h1>
-    <script>
-      // Run queries and display results here
-    </script>
+    <img src="http://evonexus.org/wp-content/uploads/2013/12/RockMyRun_2.png" height="25%" width="25%"/>
+		<br>[Incomplete proof of concept]
+		<div id="mpTable"></div>
+
+	<script>
+	$(document).ready(function() {
+		MP.api.setCredentials('fcec37d4eb15763e477aa4774831b12b', '6c06dac0c425fd04e6f6664bb70b4505')
+		var mpTable = $('#mpTable').MPTable({firstColHeader: 'Notification'})
+		var today = new Date()
+		var weekAgo = new Date()
+		weekAgo.setDate(weekAgo.getDate() - 7)
+		var datesToQuery = []
+		var thisWeek = {}
+		var allKeyStrings = []
+		var allKeyStrings2 = []
+		var tableData = {}
+		//{'date to date': {notificationID: {step1: x, step2: y, step3: z}}
+		thisWeek["from"] = weekAgo
+		thisWeek["to"] = today
+		datesToQuery.push(thisWeek)
+		for (var i in _.range(2,7)) {
+			weekNum = _.range(2,7)[i]
+			var newFrom = new Date()
+			var newTo = new Date()
+			newFrom.setDate(weekAgo.getDate() - (7*weekNum))
+			newTo.setDate(today.getDate() - (7*weekNum)) 
+			var weekPair= {}
+			weekPair["from"] = newFrom
+			weekPair["to"] = newTo
+			datesToQuery.push(weekPair)
+		}
+
+		var promiseList = []
+		var ifCount = 0
+		for (var i in datesToQuery) {
+
+			var fromDate = (datesToQuery[i]["from"])
+			var toDate = (datesToQuery[i]["to"])
+
+			var funnelPromise = MP.api.funnel('$campaign_delivery', '$campaign_open', 'Played Mix', {from: fromDate, to: toDate, segment: 'campaign_id'})
+			promiseList.push(funnelPromise)
+
+		}
+
+		Promise.all(promiseList).then(function(data) {			
+			
+			for (var i in data) {
+
+				var fromString = ((datesToQuery[i]["from"].getMonth()+1)+"/"+datesToQuery[i]["from"].getDate())
+				var toString = (datesToQuery[i]["to"].getMonth()+1)+"/"+datesToQuery[i]["to"].getDate()
+				var keyString = (fromString+" - "+toString)
+
+				
+				allKeyStrings.push(keyString)
+				allKeyStrings2 = $.unique(allKeyStrings)
+				var msgIDList1 = []
+				//get all msgIDs first
+				for (var msgID in data[i]) {
+					msgIDList1.push(msgID)
+				}
+
+				msgIDList2 = $.unique(msgIDList1)
+
+
+				for (var msgID in _.values(msgIDList2)) {//data[i]) {
+					tableData[msgIDList2[msgID]+" Sent"] = {}
+					tableData[msgIDList2[msgID]+" Opened"] = {}
+					tableData[msgIDList2[msgID]+" Played Mix"] = {}
+					for (var keyStringKey in _.values(allKeyStrings2)) {
+						tableData[msgIDList2[msgID]+" Sent"][allKeyStrings2[keyStringKey]] = {}
+						tableData[msgIDList2[msgID]+" Opened"][allKeyStrings2[keyStringKey]] = {}
+						tableData[msgIDList2[msgID]+" Played Mix"][allKeyStrings2[keyStringKey]] = {}	
+					
+					}
+				}
+			}
+
+			for (var i in data) {
+				var fromString = ((datesToQuery[i]["from"].getMonth()+1)+"/"+datesToQuery[i]["from"].getDate())
+				var toString = (datesToQuery[i]["to"].getMonth()+1)+"/"+datesToQuery[i]["to"].getDate()
+				var keyString = (fromString+" - "+toString)
+
+				for (var msgID in data[i]) {
+					
+					//sum up unique sends
+					var sendCount = 0
+					var openCount = 0
+					var mixCount = 0
+					for (var day in data[i][msgID]) {
+						sendCount += (data[i][msgID][day][0]["count"] || 0)
+						openCount += (data[i][msgID][day][1]["count"] || 0)
+						mixCount += (data[i][msgID][day][2]["count"] || 0)
+					}
+
+					var openPercentage = ((openCount/sendCount)*100).toFixed(2)
+					try {
+						tableData[msgID+" Sent"][keyString] = sendCount
+						tableData[msgID+" Opened"][keyString] = openPercentage+"%"
+						tableData[msgID+" Played Mix"][keyString] = mixCount
+					} catch(err) {
+						tableData[msgID+" Sent"][keyString] = NaN
+						tableData[msgID+" Opened"][keyString] = NaN
+						tableData[msgID+" Played Mix"][keyString] = NaN
+						null
+					}
+				}
+			}
+
+			for (var key in tableData) {
+				var reportURL = "https://mixpanel.com/report/587317/triggers/#analytics/"+key.split(' ')[0]
+				console.log(reportURL)
+				tableData[key]["Detailed Analytics"] = reportURL
+				for (var i in allKeyStrings2) {
+					if (!(allKeyStrings2[i] in tableData[key])) {
+						tableData[key][allKeyStrings2[i]] = NaN
+					}
+					
+				}
+			}
+			mpTable.MPTable('setData', tableData)
+		})
+		})
+
+
+		
+
+	</script>
   </body>
 </html>
